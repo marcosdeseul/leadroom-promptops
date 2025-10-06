@@ -116,6 +116,11 @@ const leads = await db.select().from(leadsTable);
 
 ## Git Workflow
 
+**Quality Standards**:
+- **Zero failing errors**: No failing tests or errors are acceptable
+- **Coverage requirements**: Maintain or exceed current test coverage thresholds
+- **CI must be green**: All checks (tests, lint, coverage) must pass
+
 ### Creating PRs
 
 **CRITICAL**: Always run tests before raising a PR. No exceptions.
