@@ -1,39 +1,41 @@
-# Architecture that won’t bite you
+# PromptOps Backend Architecture
 
-## Request path (inbound)
-Next.js (Vercel) → Zuplo (API key, plan, quota) → NestJS+Fastify (Cloud Run) → Supabase (Postgres + RLS/Auth)
+LLM Prompt Optimizer with user feedback - MVP focused on simplicity and speed.
 
-## Async/outbound
-Nest publishes work to Upstash Workflows/QStash with Flow Control → QStash calls your Cloud Run workflow endpoints → vendor APIs (Prospeo, Findymail, ZeroBounce) → results back to Supabase → UI updates via Realtime.
+## Request path (MVP)
 
-## Control planes
-- Zuplo + Stripe: issue tenant API keys, enforce inbound quotas, monetize.
-- Upstash: tenant/key-aware throttling for vendor calls.
-- Supabase: source of truth, RLS, Vault for secrets.
+Next.js (local) → NestJS+Fastify (local) → Supabase (local PostgreSQL + RLS/Auth)
+
+**v2+**: Add Zuplo (API gateway) → Cloud Run deployment
+
+## Core principles
+
+- **Multi-tenancy**: RLS on all tables, strict tenant isolation
+- **BYOK**: Tenant LLM keys stored in Supabase Vault, waterfall priority
+- **Synchronous**: No background jobs in MVP (add Upstash Workflows v2+)
+- **Credits**: Track token usage + optimization runs, auto-stop when depleted
+- **Streaming**: Real-time token streaming for better UX
 
 ---
 
-# Golden rules for each piece
+# Stack
 
-## Zuplo (front door, monetization)
-- Keys and plans: one Zuplo “consumer” per tenant. Attach usage plans (RPS + monthly quota).
-- Stripe: map product tiers to Zuplo plans; on payment events, auto-upgrade/downgrade plan limits.
-- Context to backend: forward `X-Tenant-Id`, `X-Plan`, and `X-API-Key-Id` headers so Nest can log and enforce tenant logic.
-- Docs and portal: publish OpenAPI from Nest Swagger; let tenants self-serve key rotation. No bespoke portal heroics.
+## NestJS + Fastify (local dev)
 
-## NestJS + Fastify (Cloud Run)
-- Fastify: keep the adapter; turn on compression only where it matters.
-- Concurrency: start at 80 per instance, bump with load tests. Set min instances for hot paths. Use VPC + Cloud NAT for a static egress IP.
-- Long work: never block requests. Enqueue to Upstash and return a `runId`.
-- Telemetry: OpenTelemetry with `x-correlation-id` from Zuplo; log `runId`, `tenantId`, `apiKeyId`, `vendorKeyHash`.
+- Fastify adapter for performance
+- Local development on custom ports (see CLAUDE.md)
+- Swagger/OpenAPI for API documentation
+- Tenant context middleware: extract `tenant_id` from auth/headers
 
 ## Supabase (DB, Auth, secrets)
-- **Database Design**: Drizzle ORM as single source of truth, migrations enhanced with Supabase features
+
+- **Database Design**: Drizzle ORM as single source of truth
   - Schema defined in TypeScript (`src/database/schema/`)
   - Drizzle generates base migrations → enhance with RLS/triggers → deploy
   - 100% ORM usage - no raw SQL, all queries through Drizzle
 
 ### Migration Workflow (Drizzle → Supabase)
+
 1. **Generate Drizzle migrations**: `npm run db:generate` creates base SQL from schema changes
 2. **Enhance for Supabase**: `npm run db:enhance` automatically adds:
    - PostgreSQL extensions (uuid-ossp, pgcrypto, pgjwt)
@@ -52,38 +54,11 @@ Nest publishes work to Upstash Workflows/QStash with Flow Control → QStash cal
   - Junction tables: Access through parent table permissions
 - **Batch processing**: Enhances all migrations in one command
 
-- RLS: all multi-tenant tables gated by `tenant_id = current_setting('request.headers')::json->>'x-tenant-id'`.
+- **RLS**: All multi-tenant tables gated by `tenant_id = current_setting('request.headers')::json->>'x-tenant-id'`
   - Policies auto-generated based on schema structure
   - Works seamlessly with Supabase auth and headers
-- Vault: store vendor API keys encrypted; fetch server-side only. Never to the client. Ever.
-- Pooling: Drizzle + postgres-js with `prepare: false` for the pooler. Keep region close to Cloud Run.
-
-## Upstash (workflows + throttling)
-- Flow Control per BYO key and tenant: `key = vendor:tenant:keyHash`, set `rate/period` and `parallelism`. That’s outbound fairness solved.
-- Step handlers: Cloud Run endpoints verify `Upstash-Signature`, do the I/O, write progress rows, return.
-- Progress: write `workflow_progress` rows at step start/end; Next.js subscribes via Supabase Realtime. Keep an admin view that reads Upstash run logs for truth.
-
----
-
-# Minimal data model (don’t overcomplicate)
-
-- `tenants(id, name, plan, stripe_customer_id, …)`
-- `tenant_api_keys(id, tenant_id, key_hash, created_at, revoked_at, quota_monthly)`
-- `vendor_secrets(tenant_id, vendor, secret_id_in_vault, created_at)`  // Supabase Vault link
-- `workflows(id, tenant_id, template, config_jsonb, created_at)`
-- `workflow_runs(id, tenant_id, workflow_id, status, started_at, finished_at)`
-- `workflow_progress(run_id, step, status, meta_jsonb, created_at)`
-- `usage_counters(tenant_id, period, calls, workflows, vendor_calls, …)`  // for billing dashboards
-
-**Note**: All tables defined in Drizzle schema with TypeScript, not raw SQL. Migrations auto-generated.
-
-RLS sketch
-
-```sql
--- example: workflow_runs visible only to same-tenant users
-create policy tenant_isolation on workflow_runs
-for select using (tenant_id = auth.jwt()->>'tenant_id');
-```
+- **Vault**: Store tenant LLM API keys encrypted; fetch server-side only. Never to the client.
+- **Pooling**: Drizzle + postgres-js with `prepare: false` for the pooler
 
 ---
 
@@ -269,53 +244,365 @@ Tests automatically run on every PR via GitHub Actions and validate all permissi
 
 ---
 
-# Glue snippets you’ll actually reuse
+# PromptOps Data Model
 
-Publish with Flow Control (TypeScript, server-side)
+All tables defined in Drizzle schema with TypeScript, not raw SQL. Migrations auto-generated.
 
-```ts
-await workflowsClient.trigger({
-  id: "email-waterfall",
-  body: { tenantId, person, vendors: {...} },
-  headers: {
-    "Upstash-Flow-Control-Key": `prospect:${tenantId}:${prospeoKeyHash}`,
-    "Upstash-Flow-Control-Value": "rate=300;period=1m;parallelism=3"
+## Core Tables
+
+### Tenant & Auth
+```typescript
+// tenants(id, name, plan, stripe_customer_id, created_at, updated_at)
+// RLS: Users can only see their own tenant
+```
+
+### Prompts & Versioning
+```typescript
+// prompts(id, tenant_id, name, description, is_public, created_at, updated_at)
+// - Template prompts with variable support ({{variable_name}})
+// - Tenant-isolated with optional public/shared marketplace (is_public flag)
+// RLS: tenant_id filter + public prompts readable by all
+
+// prompt_versions(id, prompt_id, version_number, content, metadata_jsonb, parent_version_id, created_at)
+// - Full version history with diffs
+// - parent_version_id enables branching
+// - metadata: optimization_type, model_specific_variants, performance_notes
+// RLS: Through parent prompt's tenant_id
+```
+
+### Execution & Feedback
+```typescript
+// prompt_executions(id, tenant_id, prompt_id, version_id, llm_provider_id, model, input_variables_jsonb, response_text, response_metadata_jsonb, token_usage_jsonb, cost_usd, latency_ms, created_at)
+// - Tracks every prompt execution
+// - response_metadata: status, finish_reason, streaming_enabled
+// - token_usage: prompt_tokens, completion_tokens, total_tokens
+// - Retention policy applied based on tenant plan
+// RLS: tenant_id filter
+
+// feedback(id, execution_id, tenant_id, rating, comment_text, user_context_jsonb, created_at)
+// - rating: thumbs up/down (boolean) or numeric score
+// - user_context: session_id, device_type, custom_metadata
+// RLS: tenant_id filter
+```
+
+### LLM Providers & BYOK
+```typescript
+// llm_providers(id, name, base_url, is_active)
+// - OpenAI, Anthropic, OpenRouter configs
+// - is_active flag for provider availability
+// RLS: Public read access
+
+// tenant_llm_keys(id, tenant_id, provider_id, vault_secret_id, priority, is_active, rate_limit_config_jsonb, created_at, updated_at)
+// - BYOK: encrypted keys stored in Supabase Vault
+// - priority: waterfall order (1 = highest priority)
+// - rate_limit_config: per-provider limits (rpm, tpm)
+// - Waterfall logic: Try priority 1 → 2 → 3 until success
+// RLS: tenant_id filter
+```
+
+### Credits & Usage
+```typescript
+// credit_transactions(id, tenant_id, amount, transaction_type, reference_id, reference_type, metadata_jsonb, created_at)
+// - Real-time credit tracking
+// - transaction_type: 'token_usage' | 'optimization_run' | 'purchase' | 'refund'
+// - reference: execution_id or optimization_job_id
+// - Auto-stop when balance depleted
+// RLS: tenant_id filter
+
+// tenant_credit_balance(tenant_id, balance, last_updated_at)
+// - Materialized view or cached balance
+// - Updated on every transaction
+// RLS: tenant_id filter
+```
+
+### Optimization (Manual Trigger in MVP)
+```typescript
+// optimization_suggestions(id, prompt_id, current_version_id, suggested_content, optimization_type, rationale_text, metrics_improvement_jsonb, created_at)
+// - LLM-powered prompt rewriting suggestions
+// - optimization_type: 'clarity' | 'performance' | 'cost' | 'semantic'
+// - metrics_improvement: expected satisfaction_boost, cost_reduction, etc.
+// - Manual trigger: tenant requests optimization
+// RLS: Through parent prompt's tenant_id
+
+// optimization_acceptances(id, suggestion_id, accepted_at, new_version_id)
+// - Track which suggestions were accepted
+// - Creates new prompt version when accepted
+// RLS: Through parent suggestion's tenant_id
+```
+
+### Retention Policies
+```typescript
+// retention_policies(tenant_id, execution_retention_days, feedback_retention_days, created_at, updated_at)
+// - Configurable per tenant based on plan
+// - Free: 7 days, Pro: 90 days, Enterprise: custom
+// RLS: tenant_id filter
+```
+
+### Webhooks
+```typescript
+// webhook_configs(id, tenant_id, url, secret, events_array, is_active, created_at, updated_at)
+// - events: ['new_version', 'feedback_threshold', 'performance_degradation', 'cost_alert']
+// RLS: tenant_id filter
+
+// webhook_deliveries(id, config_id, event_type, payload_jsonb, status, response_code, error_text, delivered_at)
+// - Delivery tracking and retry logic
+// RLS: Through parent config's tenant_id
+```
+
+**RLS Pattern Example**:
+```sql
+-- Auto-generated by enhancement script
+create policy tenant_isolation on prompts
+for all using (tenant_id = auth.jwt()->>'tenant_id' OR is_public = true);
+
+create policy tenant_isolation on prompt_executions
+for all using (tenant_id = auth.jwt()->>'tenant_id');
+```
+
+---
+
+# API Endpoints
+
+## Prompt Management
+
+```typescript
+POST   /prompts                    // Create prompt with template variables
+GET    /prompts                    // List tenant prompts (+ public marketplace)
+GET    /prompts/:id                // Get prompt details
+PUT    /prompts/:id                // Update prompt
+DELETE /prompts/:id                // Soft delete prompt
+POST   /prompts/:id/versions       // Create new version (manual or optimization)
+GET    /prompts/:id/versions       // List version history with diffs
+GET    /prompts/:id/versions/:vid  // Get specific version
+POST   /prompts/:id/branch         // Branch from version (creates copy)
+GET    /prompts/:id/compare?v1=X&v2=Y  // Compare versions with metrics
+```
+
+## Execution
+
+```typescript
+POST   /prompts/:id/execute        // Execute prompt with variable substitution
+                                   // Body: { variables, model?, stream? }
+                                   // Response: LLM response + metadata (tokens, cost, version)
+                                   // Supports streaming via SSE
+GET    /executions/:id             // Get execution details
+GET    /executions                 // List executions (filtered by prompt_id, date range)
+```
+
+## Feedback
+
+```typescript
+POST   /executions/:id/feedback    // Submit feedback (thumbs up/down + comment)
+                                   // Body: { rating, comment?, user_context? }
+GET    /prompts/:id/feedback       // Aggregate feedback for prompt
+GET    /prompts/:id/feedback/stats // Stats: satisfaction %, avg rating, comment themes
+```
+
+## Optimization
+
+```typescript
+POST   /prompts/:id/optimize       // Request optimization (manual trigger)
+                                   // Returns: suggestion_id, suggested_content, rationale
+GET    /prompts/:id/suggestions    // List optimization suggestions
+POST   /suggestions/:id/accept     // Accept suggestion (creates new version)
+POST   /suggestions/:id/reject     // Reject suggestion
+```
+
+## Analytics
+
+```typescript
+GET    /analytics/dashboard         // Real-time tenant dashboard
+                                    // Metrics: active prompts, executions today, avg satisfaction, credit balance
+GET    /analytics/prompts/:id       // Per-prompt metrics
+                                    // Metrics: executions, avg latency, cost, satisfaction, conversion rate
+GET    /analytics/cost              // Cost analysis and projections
+                                    // Breakdown by prompt, model, time period
+GET    /analytics/versions/compare  // A/B test results across versions
+```
+
+## BYOK Management
+
+```typescript
+POST   /providers/keys              // Register LLM provider key (stored in Vault)
+                                    // Body: { provider_id, api_key, priority?, rate_limits? }
+GET    /providers/keys              // List configured keys (masked)
+PUT    /providers/keys/:id/priority // Update waterfall priority
+DELETE /providers/keys/:id          // Revoke key
+GET    /providers                   // List available LLM providers
+```
+
+## Credits
+
+```typescript
+GET    /credits/balance             // Current credit balance
+GET    /credits/transactions        // Transaction history
+POST   /credits/purchase            // Purchase credits (Stripe integration v2+)
+```
+
+## Webhooks
+
+```typescript
+POST   /webhooks                    // Configure webhook
+                                    // Body: { url, secret, events[] }
+GET    /webhooks                    // List webhook configs
+PUT    /webhooks/:id                // Update webhook
+DELETE /webhooks/:id                // Delete webhook
+GET    /webhooks/:id/deliveries     // Delivery logs
+```
+
+---
+
+# LLM Provider Integration
+
+## Unified Abstraction Layer
+
+```typescript
+// src/llm/providers/base.provider.ts
+interface ILLMProvider {
+  execute(prompt: string, options: ExecutionOptions): Promise<LLMResponse>;
+  executeStream(prompt: string, options: ExecutionOptions): AsyncGenerator<string>;
+  estimateCost(tokenUsage: TokenUsage): number;
+}
+
+// src/llm/providers/openai.provider.ts
+class OpenAIProvider implements ILLMProvider { ... }
+
+// src/llm/providers/anthropic.provider.ts
+class AnthropicProvider implements ILLMProvider { ... }
+
+// src/llm/providers/openrouter.provider.ts
+class OpenRouterProvider implements ILLMProvider { ... }
+```
+
+## BYOK Waterfall Logic
+
+```typescript
+// src/llm/services/execution.service.ts
+async executeWithBYOK(prompt: string, options: ExecutionOptions) {
+  const tenantKeys = await getTenantKeys(tenantId, providerId, { orderBy: 'priority' });
+
+  for (const key of tenantKeys) {
+    if (!key.is_active) continue;
+
+    // Check rate limits
+    if (await isRateLimited(key.id, key.rate_limit_config)) {
+      continue; // Try next key
+    }
+
+    try {
+      const provider = getProvider(key.provider_id, key.vault_secret_id);
+      const response = await provider.execute(prompt, options);
+
+      // Track usage and cost
+      await recordExecution({ key_id: key.id, token_usage, cost });
+
+      return response;
+    } catch (error) {
+      if (isRecoverable(error)) {
+        continue; // Waterfall to next key
+      }
+      throw error;
+    }
   }
-});
+
+  throw new Error('All BYOK keys exhausted or rate limited');
+}
 ```
 
-Verify Upstash signature (NestJS middleware)
+## Streaming Support
 
-```ts
-const sig = req.headers["upstash-signature"];
-verifySignatureOrThrow(sig as string, await getCurrentSigningKey());
+```typescript
+// SSE streaming for real-time tokens
+async function* streamExecution(prompt: string, options: ExecutionOptions) {
+  const provider = await getProviderWithBYOK(tenantId, options.model);
+
+  for await (const chunk of provider.executeStream(prompt, options)) {
+    yield { type: 'token', data: chunk };
+  }
+
+  yield { type: 'done', data: { tokens, cost } };
+}
 ```
 
-Fastify health and readiness
+---
 
-```ts
-app.get("/healthz", async () => ({ ok: true }));
-app.get("/readyz", async () => ({ db: await pingDb() }));
+# Credit System
+
+## Real-Time Tracking
+
+```typescript
+// src/credits/services/credit.service.ts
+async deductCredits(tenantId: string, amount: number, reference: { type, id }) {
+  const balance = await getCurrentBalance(tenantId);
+
+  if (balance < amount) {
+    throw new InsufficientCreditsError('Auto-stop: credit balance depleted');
+  }
+
+  // Atomic transaction
+  await db.transaction(async (tx) => {
+    // Record deduction
+    await tx.insert(creditTransactions).values({
+      tenant_id: tenantId,
+      amount: -amount,
+      transaction_type: reference.type, // 'token_usage' | 'optimization_run'
+      reference_id: reference.id,
+    });
+
+    // Update balance
+    await tx.update(tenantCreditBalance)
+      .set({ balance: sql`balance - ${amount}`, last_updated_at: new Date() })
+      .where(eq(tenantCreditBalance.tenant_id, tenantId));
+  });
+
+  // Check if balance low, send warning
+  const newBalance = balance - amount;
+  if (newBalance < LOW_BALANCE_THRESHOLD) {
+    await sendCreditWarning(tenantId, newBalance);
+  }
+}
 ```
 
-Drizzle with RLS (pooled, server-side)
+## Cost Calculation
+
+```typescript
+// Token-based pricing per provider/model
+const PRICING = {
+  'openai:gpt-4': { prompt: 0.00003, completion: 0.00006 }, // per token
+  'anthropic:claude-3.5-sonnet': { prompt: 0.000003, completion: 0.000015 },
+  'optimization_run': 0.10, // flat fee
+};
+
+function calculateCost(provider: string, model: string, tokens: TokenUsage): number {
+  const pricing = PRICING[`${provider}:${model}`];
+  return (tokens.prompt_tokens * pricing.prompt) + (tokens.completion_tokens * pricing.completion);
+}
+```
+
+---
+
+# Code Snippets
+
+## Drizzle with RLS
 
 ```ts
 // Schema with native RLS support
-import { pgTable, uuid, text } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, boolean } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { authenticatedRole } from 'drizzle-orm/supabase';
 
-export const providers = pgTable('providers', {
+export const prompts = pgTable('prompts', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
   name: text('name').notNull(),
+  content: text('content').notNull(),
+  isPublic: boolean('is_public').default(false),
 }, (table) => [
   table.enableRLS(),
   pgPolicy('tenant_isolation', {
     for: 'all',
     to: authenticatedRole,
-    using: sql`tenant_id = auth.jwt() ->> 'tenant_id'::uuid`
+    using: sql`tenant_id = auth.jwt() ->> 'tenant_id'::uuid OR is_public = true`
   })
 ]);
 
@@ -323,15 +610,22 @@ export const providers = pgTable('providers', {
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from './database/schema';
-const sql = postgres(process.env.DATABASE_URL!, { prepare: false }); // pooler-friendly
-export const db = drizzle(sql, { schema });
+const client = postgres(process.env.DATABASE_URL!, { prepare: false }); // pooler-friendly
+export const db = drizzle(client, { schema });
 ```
 
-Migration workflow (Drizzle-first)
+## Fastify Health Checks
+
+```ts
+app.get("/healthz", async () => ({ ok: true }));
+app.get("/readyz", async () => ({ db: await pingDb() }));
+```
+
+## Migration Workflow
 
 ```bash
 # 1. Define schema in TypeScript
-edit src/database/schema/providers.ts
+edit src/database/schema/prompts.ts
 
 # 2. Generate SQL migration
 npm run db:generate
@@ -340,60 +634,69 @@ npm run db:generate
 npm run db:enhance
 
 # 4. Apply to database
-npm run db:push
+supabase db reset --local
 ```
 
 ---
 
-# Ops checklists
-
-## Cloud Run
-- VPC connector + Cloud NAT with reserved IP.
-- `--concurrency=80` to start, `--cpu=1` or `2` based on profile, `--min-instances` for hot paths.
-- Use Cloud Run Jobs for backfills and batch reprocessing.
-
-## Zuplo
-- Plans: `free`, `pro`, `enterprise` with RPS and monthly caps.
-- Stripe webhooks → plan change → Zuplo plan update → email + UI banner.
-- 429 with `X-RateLimit-*` headers; don’t pretend infinite.
-
-## Upstash
-- Standardize Flow Control per vendor. Keep a table of per-key limits you hydrate at publish time.
-- Alert when `waitlist_size` per flow-key exceeds threshold; bump rate or parallelism or nag the customer.
+# Ops Best Practices
 
 ## Supabase
-- Network Restrictions on; allowlist Cloud NAT IP.
-- Backups verified; PITR tested.
-- RLS tests as part of CI.
+- **Vault**: Store tenant LLM keys encrypted; never expose to client
+- **RLS**: Auto-generated policies for tenant isolation
+- **Backups**: Verify backups, test PITR
+- **RLS Tests**: Part of CI (test tenant isolation)
 
 ## Observability
-- Trace ID from Zuplo to Nest to Upstash steps.
-- SLOs: p99 API latency, queue time, success rate per vendor, DLQ size, time-to-first-result per run.
+- Correlation IDs across requests
+- SLOs: p99 API latency, execution success rate, credit balance alerts
+- Monitor: Prompt execution rate, LLM provider failures, optimization acceptance rate
+
+## Security
+- Never log LLM API keys (even hashed)
+- Validate webhook signatures before processing
+- Rate limit optimization requests (prevent abuse)
+- Sanitize user-provided template variables
 
 ---
 
-# Landmines to sidestep
+# Landmines to Sidestep
 
-- Shoving vendor keys into plain text columns. Use Vault.
-- Treating Upstash like compute. It orchestrates; Cloud Run does the work.
-- Letting Vercel host WebSockets. Keep sockets on Cloud Run if you need them.
-- Forgetting `prepare: false` on postgres-js with the pooler, then blaming the database.
-- Writing raw SQL migrations when Drizzle can generate them. Keep single source of truth.
-- Mixing Supabase migrations with Drizzle migrations. Use Drizzle + enhancement only.
+- **Shoving LLM keys into plain text columns**. Use Vault.
+- **Forgetting `prepare: false`** on postgres-js with the pooler, then blaming the database.
+- **Writing raw SQL migrations** when Drizzle can generate them. Keep single source of truth.
+- **Mixing Supabase migrations with Drizzle migrations**. Use Drizzle + enhancement only.
+- **Exposing tenant data across tenants**. RLS is your friend, test it.
+- **Caching LLM responses without tenant context**. Can leak data across tenants.
 
 ---
 
-# Rollout plan (two sprints, not a novella)
+# MVP Rollout (2-4 Weeks)
 
-## Week 1
-- Wire Zuplo → Cloud Run. Swagger → Zuplo portal. Stripe plans.
-- Drizzle schema + RLS + Vault tables.
-- Upstash workflow skeleton with one vendor, progress rows, Realtime UI.
+## Week 1-2: Core Functionality
+- Drizzle schema + RLS + Vault setup
+- Prompt CRUD with versioning
+- BYOK: OpenAI + Anthropic key registration
+- Execution engine with streaming support
+- Feedback collection (async endpoint + webhooks)
+- Credit tracking (real-time balance, auto-stop)
 
-## Week 2
-- Add BYO-key onboarding UI, set per-key Flow Control.
-- Add second vendor + ZeroBounce validate step.
-- Usage metering → Stripe usage reporting.
-- Load test: 500 RPS burst inbound, 5 RPS per BYO key outbound, prove queues shape correctly.
+## Week 3-4: Optimization & Analytics
+- LLM-powered optimization suggestions (manual trigger)
+- Analytics dashboard (real-time metrics, historical trends)
+- Version comparison UI
+- Cost analysis and projections
+- Webhook delivery system
+- OpenRouter integration for unified LLM access
 
-Ship this and you’re operating like an adult: clear plan boundaries, tenant safety, outbound throttling, and a billing switch that actually bills.
+## Deferred to v2+
+- Background jobs (Upstash Workflows)
+- Zuplo API gateway
+- Cloud Run deployment
+- Vector search (pgvector)
+- Real-time auto-optimization
+- Redis/Upstash caching
+- Advanced A/B testing automation
+- ML-based optimization models
+
+Ship this and you have: multi-tenant prompt management, BYOK with waterfall, feedback-driven optimization, real-time analytics, and a credit system that actually bills.
