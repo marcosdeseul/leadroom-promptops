@@ -112,7 +112,7 @@ Add to your `.env` file:
 
 ```bash
 # Local Development (default password from seed.sql)
-DRIZZLE_DATABASE_URL=postgresql://drizzle_readonly:drizzle_readonly_local_dev@localhost:54322/postgres
+DRIZZLE_DATABASE_URL=postgresql://drizzle_readonly:drizzle_readonly_local_dev@localhost:55322/postgres
 
 # Production (use strong password, create user manually)
 DRIZZLE_DATABASE_URL=postgresql://drizzle_readonly:STRONG_PASSWORD@host:port/database
