@@ -18,7 +18,7 @@ describe('DatabaseModule', () => {
           load: [
             () => ({
               DATABASE_URL:
-                'postgresql://postgres:postgres@localhost:54322/postgres',
+                'postgresql://postgres:postgres@localhost:55322/postgres',
             }),
           ],
         }),
@@ -40,7 +40,7 @@ describe('DatabaseModule', () => {
     const configService = module.get<ConfigService>(ConfigService);
     const dbUrl = configService.get<string>('DATABASE_URL');
     expect(dbUrl).toBe(
-      'postgresql://postgres:postgres@localhost:54322/postgres',
+      'postgresql://postgres:postgres@localhost:55322/postgres',
     );
   });
 
