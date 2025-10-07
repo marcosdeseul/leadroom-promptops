@@ -6,7 +6,7 @@ describe('HealthService', () => {
   let mockDbExecute: jest.Mock;
 
   beforeEach(async () => {
-    mockDbExecute = jest.fn().mockResolvedValue([] as any);
+    mockDbExecute = jest.fn().mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
