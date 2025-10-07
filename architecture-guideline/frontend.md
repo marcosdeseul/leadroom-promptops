@@ -144,3 +144,376 @@ You already use Framer for the landing. Do two things so journeys and attributio
 [18]: https://sentry.io/for/nextjs/?utm_source=chatgpt.com "Error and Performance Monitoring for Next.js - Sentry"
 [19]: https://v2.chakra-ui.com/getting-started/nextjs-app-guide?utm_source=chatgpt.com "Getting Started with Next.js (App)"
 [20]: https://nextjs.org/docs/app/api-reference/file-conventions/metadata/sitemap?utm_source=chatgpt.com "Metadata Files: sitemap.xml"
+
+---
+
+# PromptOps UI Requirements
+
+## Directory Structure
+
+```
+app/
+  (auth)/
+    login/
+    signup/
+  dashboard/
+    page.tsx                    # Overview: active prompts, executions, credits
+    prompts/
+      page.tsx                  # Prompt library (tenant + public marketplace)
+      [id]/
+        page.tsx                # Prompt detail with version history
+        execute/
+          page.tsx              # Execution playground with streaming
+        versions/
+          page.tsx              # Version comparison UI
+    analytics/
+      page.tsx                  # Real-time analytics dashboard
+    settings/
+      page.tsx                  # BYOK key management, webhooks
+  api/
+    prompts/
+    executions/
+    feedback/
+lib/
+  api/
+    prompts.ts                  # TanStack Query fetchers
+    executions.ts
+    feedback.ts
+    analytics.ts
+  validators/
+    prompt.schemas.ts           # Zod schemas for forms
+    execution.schemas.ts
+  stores/
+    prompt-editor.store.ts      # Zustand for editor state
+components/
+  prompts/
+    prompt-card.tsx             # Prompt list item
+    prompt-editor.tsx           # Monaco/CodeMirror editor with syntax highlighting
+    version-timeline.tsx        # Visual version history
+    variable-input.tsx          # Template variable form fields
+  execution/
+    execution-playground.tsx    # Execute prompt with streaming
+    streaming-response.tsx      # SSE token streaming display
+    execution-history.tsx       # Past executions list
+  feedback/
+    feedback-widget.tsx         # Thumbs up/down + comment
+    feedback-stats.tsx          # Aggregate feedback display
+  analytics/
+    metrics-card.tsx            # KPI cards (executions, satisfaction, cost)
+    cost-chart.tsx              # Recharts cost breakdown
+    performance-chart.tsx       # Latency/token usage trends
+  byok/
+    provider-key-form.tsx       # RHF + Zod form for adding keys
+    provider-key-list.tsx       # List with priority drag-and-drop
+```
+
+## Core UI Components
+
+### Prompt Management
+
+**Prompt Library** (`/dashboard/prompts`):
+- Data table with search, filter (tenant/public, tags)
+- Columns: name, version, last execution, satisfaction %, actions
+- "Create Prompt" button → prompt editor modal
+- Public marketplace toggle (show/hide shared prompts)
+
+**Prompt Editor** (`components/prompts/prompt-editor.tsx`):
+- Monaco Editor or CodeMirror for syntax highlighting
+- Template variable detection (`{{variable_name}}`)
+- Variable preview panel with example values
+- Save as new version or update current
+- Branch button (create variant from current version)
+
+**Version History** (`/dashboard/prompts/[id]/versions`):
+- Timeline view with version numbers
+- Diff viewer (previous ↔ current)
+- Performance metrics per version (satisfaction, cost, latency)
+- Rollback button (creates new version from old one)
+- Compare selector (select 2 versions → side-by-side comparison)
+
+### Execution Playground
+
+**Playground** (`/dashboard/prompts/[id]/execute`):
+- Template variable form (auto-generated from `{{variables}}`)
+- Model selector (dropdown: GPT-4, Claude 3.5, etc.)
+- Stream toggle (enable/disable real-time tokens)
+- Execute button
+- Streaming response panel with token-by-token display
+- Execution metadata display (tokens, cost, latency)
+- Feedback widget (thumbs up/down + comment)
+
+**Streaming Response** (`components/execution/streaming-response.tsx`):
+- SSE connection to `/prompts/:id/execute?stream=true`
+- Token-by-token rendering with typing animation
+- Progress indicator during execution
+- Copy to clipboard button
+- Markdown rendering for formatted responses
+
+### Feedback System
+
+**Feedback Widget** (`components/feedback/feedback-widget.tsx`):
+- Thumbs up/down buttons
+- Optional comment textarea (expands on click)
+- Submit button with loading state
+- Toast notification on success
+
+**Feedback Stats** (`components/feedback/feedback-stats.tsx`):
+- Satisfaction percentage (% thumbs up)
+- Total feedback count
+- Recent comments list with sentiment indicators
+- Filter by rating (positive/negative)
+
+### Analytics Dashboard
+
+**Dashboard Overview** (`/dashboard/analytics`):
+- KPI cards (Recharts for sparklines):
+  - Active prompts count
+  - Executions today vs. yesterday
+  - Average satisfaction (%)
+  - Credit balance with burn rate
+- Cost breakdown chart (by prompt, model, time period)
+- Performance trend chart (latency, token usage over time)
+- Top performing prompts table
+
+**Prompt Analytics** (`/dashboard/prompts/[id]/analytics`):
+- Execution count timeline
+- Satisfaction trend
+- Cost per execution
+- Model comparison (if used across multiple models)
+- Version performance comparison
+
+### BYOK Management
+
+**Provider Keys** (`/dashboard/settings`):
+- Provider cards (OpenAI, Anthropic, OpenRouter)
+- Add key button → modal with:
+  - RHF + Zod form (provider, API key, priority, rate limits)
+  - Vault encryption notice
+  - Test connection button
+- Key list with:
+  - Masked key display (last 4 chars only)
+  - Priority badge (drag-and-drop to reorder)
+  - Active/inactive toggle
+  - Delete button with confirmation
+
+**Webhooks** (`/dashboard/settings/webhooks`):
+- Webhook URL form
+- Event checkboxes (new_version, feedback_threshold, etc.)
+- Secret generation
+- Delivery log table (status, timestamp, retry count)
+
+## Forms & Validation
+
+### Prompt Creation/Edit
+
+```typescript
+// lib/validators/prompt.schemas.ts
+import { z } from 'zod';
+
+export const promptSchema = z.object({
+  name: z.string().min(3).max(100),
+  description: z.string().max(500).optional(),
+  content: z.string().min(10),
+  is_public: z.boolean().default(false),
+  tags: z.array(z.string()).optional(),
+});
+
+// components/prompts/prompt-form.tsx
+const form = useForm({
+  resolver: zodResolver(promptSchema),
+  defaultValues: { is_public: false },
+});
+```
+
+### Execution Form
+
+```typescript
+// Dynamically generated from template variables
+const executionSchema = z.object({
+  variables: z.record(z.string()), // { variable_name: value }
+  model: z.string(),
+  stream: z.boolean().default(true),
+});
+```
+
+### BYOK Key Form
+
+```typescript
+const providerKeySchema = z.object({
+  provider_id: z.string().uuid(),
+  api_key: z.string().min(20),
+  priority: z.number().int().min(1).max(99),
+  rate_limits: z.object({
+    requests_per_minute: z.number().int().optional(),
+    tokens_per_minute: z.number().int().optional(),
+  }).optional(),
+});
+```
+
+## Data Fetching Patterns
+
+### TanStack Query Hooks
+
+```typescript
+// lib/api/prompts.ts
+export const usePrompts = () => {
+  return useQuery({
+    queryKey: ['prompts'],
+    queryFn: async () => {
+      const res = await fetch('/api/prompts');
+      return res.json();
+    },
+  });
+};
+
+export const useExecutePrompt = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, variables, model }: ExecutePromptInput) => {
+      const res = await fetch(`/api/prompts/${id}/execute`, {
+        method: 'POST',
+        body: JSON.stringify({ variables, model }),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['executions'] });
+    },
+  });
+};
+
+// Streaming execution
+export const useStreamingExecution = (promptId: string, variables: Record<string, string>) => {
+  const [tokens, setTokens] = useState<string[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+
+  const execute = useCallback(async () => {
+    setIsStreaming(true);
+    setTokens([]);
+
+    const eventSource = new EventSource(
+      `/api/prompts/${promptId}/execute?stream=true&variables=${JSON.stringify(variables)}`
+    );
+
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'token') {
+        setTokens((prev) => [...prev, data.data]);
+      } else if (data.type === 'done') {
+        setIsStreaming(false);
+        eventSource.close();
+      }
+    };
+
+    eventSource.onerror = () => {
+      setIsStreaming(false);
+      eventSource.close();
+    };
+  }, [promptId, variables]);
+
+  return { tokens, isStreaming, execute };
+};
+```
+
+## State Management
+
+### Prompt Editor State (Zustand)
+
+```typescript
+// lib/stores/prompt-editor.store.ts
+import { create } from 'zustand';
+
+interface PromptEditorState {
+  content: string;
+  variables: string[]; // Extracted from {{variable_name}}
+  isDirty: boolean;
+  setContent: (content: string) => void;
+  extractVariables: () => void;
+  reset: () => void;
+}
+
+export const usePromptEditor = create<PromptEditorState>((set, get) => ({
+  content: '',
+  variables: [],
+  isDirty: false,
+  setContent: (content) => {
+    set({ content, isDirty: true });
+    get().extractVariables();
+  },
+  extractVariables: () => {
+    const { content } = get();
+    const matches = content.match(/\{\{(\w+)\}\}/g) || [];
+    const variables = matches.map((m) => m.replace(/\{\{|\}\}/g, ''));
+    set({ variables: [...new Set(variables)] });
+  },
+  reset: () => set({ content: '', variables: [], isDirty: false }),
+}));
+```
+
+## Theming
+
+### PromptOps Semantic Tokens
+
+```typescript
+// styles/theme.ts
+import { extendTheme } from '@chakra-ui/react';
+
+export const theme = extendTheme({
+  semanticTokens: {
+    colors: {
+      'brand.primary': { default: 'blue.500', _dark: 'blue.300' },
+      'brand.secondary': { default: 'purple.500', _dark: 'purple.300' },
+      'surface.elevated': { default: 'white', _dark: 'gray.800' },
+      'surface.base': { default: 'gray.50', _dark: 'gray.900' },
+      'text.primary': { default: 'gray.900', _dark: 'gray.50' },
+      'text.muted': { default: 'gray.600', _dark: 'gray.400' },
+      'border.default': { default: 'gray.200', _dark: 'gray.700' },
+      'feedback.positive': { default: 'green.500', _dark: 'green.300' },
+      'feedback.negative': { default: 'red.500', _dark: 'red.300' },
+    },
+  },
+});
+```
+
+## Testing
+
+### E2E Test Scenarios (Playwright)
+
+```typescript
+// e2e/prompt-workflow.spec.ts
+test('Create and execute prompt with streaming', async ({ page }) => {
+  // Login
+  await page.goto('/login');
+  await page.fill('[name="email"]', 'test@example.com');
+  await page.fill('[name="password"]', 'password');
+  await page.click('button[type="submit"]');
+
+  // Create prompt
+  await page.goto('/dashboard/prompts');
+  await page.click('text=Create Prompt');
+  await page.fill('[name="name"]', 'Test Prompt');
+  await page.fill('[name="content"]', 'Hello {{name}}!');
+  await page.click('text=Save');
+
+  // Execute prompt
+  await page.click('text=Execute');
+  await page.fill('[name="variables.name"]', 'World');
+  await page.click('text=Run');
+
+  // Verify streaming response
+  await expect(page.locator('text=Hello World!')).toBeVisible();
+
+  // Submit feedback
+  await page.click('[aria-label="Thumbs up"]');
+  await expect(page.locator('text=Feedback submitted')).toBeVisible();
+});
+```
+
+## Performance Optimizations
+
+- **Code splitting**: Lazy load Monaco Editor, Recharts
+- **Virtualization**: Use `@tanstack/react-virtual` for long prompt lists
+- **Debounced search**: 300ms debounce on prompt search input
+- **Optimistic updates**: TanStack Query optimistic updates for feedback submission
+- **Streaming**: SSE for real-time token streaming (no polling)
