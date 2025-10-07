@@ -1,0 +1,53 @@
+# Dependencies
+backend/node_modules/
+frontend/node_modules/
+node_modules/
+
+# Environment variables
+backend/.env
+frontend/.env
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+backend/coverage/
+frontend/coverage/
+coverage/
+
+# Build outputs
+backend/dist/
+frontend/.next/
+frontend/out/
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+.cache/
+.temp/
+
+# Database
+backend/drizzle/
+*.db
+*.sqlite
+
+# Supabase
+backend/supabase/.branches/
+backend/supabase/.temp/
