@@ -1,7 +1,17 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as schema from './schema';
+/**
+ * @deprecated This file is being migrated to DatabaseModule
+ *
+ * MIGRATION NOTICE:
+ * The database connection is now managed by DatabaseModule using ConfigService.
+ * This ensures .env variables are loaded before creating the connection.
+ *
+ * OLD (import-time initialization):
+ *   import { db } from './db.config';
+ *
+ * NEW (dependency injection):
+ *   constructor(@Inject('DATABASE_CONNECTION') private readonly db: DatabaseConnection) {}
+ *
+ * See: src/database/database.module.ts
+ */
 
-const connectionString = process.env.DATABASE_URL!;
-const client = postgres(connectionString, { prepare: false }); // Pooler-friendly
-export const db = drizzle(client, { schema });
+export * from './schema';

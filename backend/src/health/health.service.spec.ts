@@ -1,23 +1,26 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HealthService } from './health.service';
-import { db } from '../database/db.config';
 
 describe('HealthService', () => {
   let service: HealthService;
-  let executeSpy: jest.SpyInstance;
+  let mockDbExecute: jest.Mock;
 
   beforeEach(async () => {
-    executeSpy = jest.spyOn(db, 'execute').mockResolvedValue([] as any);
+    mockDbExecute = jest.fn().mockResolvedValue([] as any);
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [HealthService],
+      providers: [
+        HealthService,
+        {
+          provide: 'DATABASE_CONNECTION',
+          useValue: {
+            execute: mockDbExecute,
+          },
+        },
+      ],
     }).compile();
 
     service = module.get<HealthService>(HealthService);
-  });
-
-  afterEach(() => {
-    executeSpy.mockRestore();
   });
 
   it('should be defined', () => {
@@ -36,16 +39,16 @@ describe('HealthService', () => {
       const result = await service.checkReadiness();
 
       expect(result).toEqual({ ok: true, db: true });
-      expect(executeSpy).toHaveBeenCalled();
+      expect(mockDbExecute).toHaveBeenCalled();
     });
 
     it('should return ok: false and db: false when database connection fails', async () => {
-      executeSpy.mockRejectedValueOnce(new Error('Connection failed'));
+      mockDbExecute.mockRejectedValueOnce(new Error('Connection failed'));
 
       const result = await service.checkReadiness();
 
       expect(result).toEqual({ ok: false, db: false });
-      expect(executeSpy).toHaveBeenCalled();
+      expect(mockDbExecute).toHaveBeenCalled();
     });
   });
 });
