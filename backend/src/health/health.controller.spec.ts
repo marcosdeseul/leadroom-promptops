@@ -4,24 +4,27 @@ import { HealthService } from './health.service';
 
 describe('HealthController', () => {
   let controller: HealthController;
-  let service: HealthService;
+  let checkHealthMock: jest.Mock;
+  let checkReadinessMock: jest.Mock;
 
   beforeEach(async () => {
+    checkHealthMock = jest.fn().mockReturnValue({ ok: true });
+    checkReadinessMock = jest.fn().mockResolvedValue({ ok: true, db: true });
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthController],
       providers: [
         {
           provide: HealthService,
           useValue: {
-            checkHealth: jest.fn().mockReturnValue({ ok: true }),
-            checkReadiness: jest.fn().mockResolvedValue({ ok: true, db: true }),
+            checkHealth: checkHealthMock,
+            checkReadiness: checkReadinessMock,
           },
         },
       ],
     }).compile();
 
     controller = module.get<HealthController>(HealthController);
-    service = module.get<HealthService>(HealthService);
   });
 
   it('should be defined', () => {
@@ -31,18 +34,18 @@ describe('HealthController', () => {
   describe('health', () => {
     it('should return ok: true', () => {
       const result = controller.health();
+
       expect(result).toEqual({ ok: true });
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(service.checkHealth).toHaveBeenCalled();
+      expect(checkHealthMock).toHaveBeenCalled();
     });
   });
 
   describe('readiness', () => {
     it('should return ok: true and db: true', async () => {
       const result = await controller.readiness();
+
       expect(result).toEqual({ ok: true, db: true });
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(service.checkReadiness).toHaveBeenCalled();
+      expect(checkReadinessMock).toHaveBeenCalled();
     });
   });
 });
