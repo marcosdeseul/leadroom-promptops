@@ -7,7 +7,7 @@ describe('HealthService', () => {
   let executeSpy: jest.SpyInstance;
 
   beforeEach(async () => {
-    executeSpy = jest.spyOn(db, 'execute').mockResolvedValue([]);
+    executeSpy = jest.spyOn(db, 'execute').mockResolvedValue([] as any);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [HealthService],
