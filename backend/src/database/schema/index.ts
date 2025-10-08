@@ -1,4 +1,5 @@
-// Export all schema tables here
-// Will be populated in issue #11
-
-export {};
+// Export all schema tables
+export * from './tenants';
+export * from './prompts';
+export * from './executions';
+export * from './feedback';

@@ -51,3 +51,6 @@ backend/drizzle/
 # Supabase
 backend/supabase/.branches/
 backend/supabase/.temp/
+
+# MCP Servers
+.serena/

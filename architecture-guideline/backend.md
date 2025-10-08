@@ -31,32 +31,29 @@ Next.js (local) → NestJS+Fastify (local) → Supabase (local PostgreSQL + RLS/
 
 - **Database Design**: Drizzle ORM as single source of truth
   - Schema defined in TypeScript (`src/database/schema/`)
-  - Drizzle generates base migrations → enhance with RLS/triggers → deploy
+  - RLS policies defined inline with `pgPolicy()` - see DATABASE.md for complete patterns
   - 100% ORM usage - no raw SQL, all queries through Drizzle
 
-### Migration Workflow (Drizzle → Supabase)
+### Migration Workflow (5-Step Process)
 
-1. **Generate Drizzle migrations**: `npm run db:generate` creates base SQL from schema changes
-2. **Enhance for Supabase**: `npm run db:enhance` automatically adds:
-   - PostgreSQL extensions (uuid-ossp, pgcrypto, pgjwt)
-   - Auth helper functions: `auth.tenant_id()`, `auth.uid()`
-   - Updated_at triggers for tables with timestamps
-   - Dynamic RLS policies based on schema analysis
-3. **Apply to Supabase**: `supabase db reset --local` applies enhanced migrations
-4. **Push to production**: `supabase db push` after testing locally
+**Complete guide**: See `architecture-guideline/DATABASE.md` for detailed patterns, RLS examples, and JSONB types.
+
+1. **Define schema in TypeScript** with `pgPolicy()` for inline RLS policies
+2. **Generate SQL**: `npm run db:generate` creates migration from schema changes
+3. **Copy to Supabase**: `npm run db:copy` moves migration to `supabase/migrations/` via `scripts/copy-migrations.ts`
+4. **Apply locally**: `supabase db reset --local` applies all migrations + seed data
+5. **Verify**: Check tables and RLS policies in Supabase Studio (http://127.0.0.1:54323)
 
 **Key Features**:
-- **Idempotent**: Can run enhancement multiple times safely
-- **Smart detection**: Skips already-enhanced migrations (name matching)
-- **Dynamic RLS**: Analyzes schema to generate appropriate policies:
-  - Tenant-isolated tables: Filter by `tenant_id`
-  - Global reference tables: Public read access
-  - Junction tables: Access through parent table permissions
-- **Batch processing**: Enhances all migrations in one command
+- **Declarative RLS**: Policies defined inline with table schemas using Drizzle's `pgPolicy()`
+- **Type-Safe JSONB**: Shared types in `src/database/schema/types.ts` for consistency
+- **Shared Constants**: `authenticatedRole` defined once in `constants.ts`, imported everywhere
+- **Multi-Tenant Patterns**: 3 RLS patterns (standard, root, nested) - see DATABASE.md
+- **Single Source of Truth**: TypeScript schema drives everything, SQL is generated
 
-- **RLS**: All multi-tenant tables gated by `tenant_id = current_setting('request.headers')::json->>'x-tenant-id'`
-  - Policies auto-generated based on schema structure
-  - Works seamlessly with Supabase auth and headers
+- **RLS**: All multi-tenant tables use `tenant_id::text = current_setting('app.current_tenant_id', true)`
+  - Policies defined inline with `pgPolicy()` for type safety and self-documentation
+  - Session variable set via middleware, policies filter automatically
 - **Vault**: Store tenant LLM API keys encrypted; fetch server-side only. Never to the client.
 - **Pooling**: Drizzle + postgres-js with `prepare: false` for the pooler
 
@@ -250,39 +247,38 @@ All tables defined in Drizzle schema with TypeScript, not raw SQL. Migrations au
 
 ## Core Tables
 
+**Detailed Documentation**: See `architecture-guideline/DATABASE.md` for:
+- Complete table schemas with column definitions
+- RLS pattern explanations (standard, root, nested)
+- JSONB type safety patterns
+- Index strategy and performance optimization
+- Cascade delete behavior
+- Migration workflow details
+
+**Quick Reference** (foundational tables implemented in PR #16):
+
 ### Tenant & Auth
 ```typescript
 // tenants(id, name, plan, stripe_customer_id, created_at, updated_at)
-// RLS: Users can only see their own tenant
+// RLS: id::text = current_setting('app.current_tenant_id', true) [special case: id IS tenant_id]
 ```
 
 ### Prompts & Versioning
 ```typescript
 // prompts(id, tenant_id, name, description, is_public, created_at, updated_at)
-// - Template prompts with variable support ({{variable_name}})
-// - Tenant-isolated with optional public/shared marketplace (is_public flag)
-// RLS: tenant_id filter + public prompts readable by all
+// RLS: tenant_id filter OR is_public = true [allows public marketplace]
 
 // prompt_versions(id, prompt_id, version_number, content, metadata_jsonb, parent_version_id, created_at)
-// - Full version history with diffs
-// - parent_version_id enables branching
-// - metadata: optimization_type, model_specific_variants, performance_notes
-// RLS: Through parent prompt's tenant_id
+// RLS: EXISTS subquery through parent prompt [nested isolation with public support]
 ```
 
 ### Execution & Feedback
 ```typescript
 // prompt_executions(id, tenant_id, prompt_id, version_id, llm_provider_id, model, input_variables_jsonb, response_text, response_metadata_jsonb, token_usage_jsonb, cost_usd, latency_ms, created_at)
-// - Tracks every prompt execution
-// - response_metadata: status, finish_reason, streaming_enabled
-// - token_usage: prompt_tokens, completion_tokens, total_tokens
-// - Retention policy applied based on tenant plan
-// RLS: tenant_id filter
+// RLS: Standard tenant isolation [tenant_id filter]
 
 // feedback(id, execution_id, tenant_id, rating, comment_text, user_context_jsonb, created_at)
-// - rating: thumbs up/down (boolean) or numeric score
-// - user_context: session_id, device_type, custom_metadata
-// RLS: tenant_id filter
+// RLS: Standard tenant isolation [tenant_id filter]
 ```
 
 ### LLM Providers & BYOK
