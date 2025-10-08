@@ -107,7 +107,40 @@ const leads = await db.select().from(leadsTable);
 
 - **Multi-tenancy**: ALL tables have `tenant_id`, RLS enforced via Drizzle TypeScript schema
 - **Schema Location**: `backend/src/database/schema/` - see architecture-guideline/DATABASE.md for complete patterns
-- **Migrations**: Auto-generated from TypeScript schema via `npm run db:generate`
+- **Migrations**: Auto-generated from TypeScript schema via 5-step workflow:
+  1. Define schema in TypeScript with `pgPolicy()` for RLS
+  2. `npm run db:generate` - Generate SQL migration
+  3. `npm run db:copy` - Copy to `supabase/migrations/` via `scripts/copy-migrations.ts`
+  4. `supabase db reset --local` - Apply to local database
+  5. Verify in Supabase Studio (http://127.0.0.1:54323)
+
+**RLS Pattern Examples** (from `backend/src/database/schema/`):
+```typescript
+// Standard tenant isolation (prompts, executions, feedback)
+pgPolicy('table_select', {
+  for: 'select',
+  to: authenticatedRole,
+  using: sql`tenant_id::text = current_setting('app.current_tenant_id', true)`,
+})
+
+// Root tenant pattern (tenants table only)
+pgPolicy('tenants_select', {
+  for: 'select',
+  to: authenticatedRole,
+  using: sql`id::text = current_setting('app.current_tenant_id', true)`,
+})
+
+// Nested RLS (prompt_versions inherits from prompts)
+pgPolicy('prompt_versions_select', {
+  for: 'select',
+  to: authenticatedRole,
+  using: sql`EXISTS (
+    SELECT 1 FROM prompts
+    WHERE prompts.id = prompt_versions.prompt_id
+    AND (prompts.tenant_id::text = current_setting('app.current_tenant_id', true) OR prompts.is_public = true)
+  )`,
+})
+```
 
 ## Development Roadmap
 
