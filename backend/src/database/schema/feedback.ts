@@ -6,15 +6,13 @@ import {
   jsonb,
   timestamp,
   pgPolicy,
-  pgRole,
   index,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { tenants } from './tenants';
 import { promptExecutions } from './executions';
-
-// Database roles
-const authenticatedRole = pgRole('authenticated');
+import { authenticatedRole } from './constants';
+import type { JsonValue } from './types';
 
 /**
  * Feedback
@@ -39,7 +37,7 @@ export const feedback = pgTable(
     userContextJsonb: jsonb('user_context_jsonb').$type<{
       sessionId?: string;
       deviceType?: string;
-      customMetadata?: Record<string, string | number | boolean | null>;
+      customMetadata?: JsonValue;
     }>(),
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -49,8 +47,14 @@ export const feedback = pgTable(
     index('feedback_execution_id_idx').on(table.executionId),
     index('feedback_tenant_id_idx').on(table.tenantId),
     index('feedback_created_at_idx').on(table.createdAt),
+    // Index for analytics queries (e.g., thumbs up/down counts)
+    index('feedback_rating_idx').on(table.rating),
 
-    // RLS Policies - tenant_id filter
+    /**
+     * RLS Policies - Standard Tenant Isolation
+     * Pattern: tenant_id::text = current_setting('app.current_tenant_id', true)
+     * Ensures users can only access feedback from their own tenant
+     */
     pgPolicy('feedback_select', {
       for: 'select',
       to: authenticatedRole,

@@ -4,13 +4,10 @@ import {
   text,
   timestamp,
   pgPolicy,
-  pgRole,
   index,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-
-// Database roles
-const authenticatedRole = pgRole('authenticated');
+import { authenticatedRole } from './constants';
 
 /**
  * Tenants
@@ -34,7 +31,11 @@ export const tenants = pgTable(
     // Indexes
     index('tenants_stripe_customer_id_idx').on(table.stripeCustomerId),
 
-    // RLS Policies - Users can only see their own tenant
+    /**
+     * RLS Policies - Root Tenant Isolation
+     * Pattern: id::text = current_setting('app.current_tenant_id', true)
+     * Note: Uses 'id' instead of 'tenant_id' because tenants.id IS the tenant_id
+     */
     pgPolicy('tenants_select', {
       for: 'select',
       to: authenticatedRole,

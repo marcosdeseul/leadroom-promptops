@@ -7,15 +7,13 @@ import {
   integer,
   timestamp,
   pgPolicy,
-  pgRole,
   index,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { tenants } from './tenants';
 import { prompts, promptVersions } from './prompts';
-
-// Database roles
-const authenticatedRole = pgRole('authenticated');
+import { authenticatedRole } from './constants';
+import type { JsonValue } from './types';
 
 /**
  * Prompt Executions
@@ -41,9 +39,7 @@ export const promptExecutions = pgTable(
     model: text('model').notNull(), // e.g., 'gpt-4', 'claude-3-opus'
 
     // Input and output
-    inputVariablesJsonb: jsonb('input_variables_jsonb').$type<
-      Record<string, string | number | boolean | null>
-    >(),
+    inputVariablesJsonb: jsonb('input_variables_jsonb').$type<JsonValue>(),
     responseText: text('response_text').notNull(),
     responseMetadataJsonb: jsonb('response_metadata_jsonb').$type<{
       status?: string;
@@ -70,7 +66,11 @@ export const promptExecutions = pgTable(
     index('prompt_executions_created_at_idx').on(table.createdAt),
     index('prompt_executions_llm_provider_id_idx').on(table.llmProviderId),
 
-    // RLS Policies - tenant_id filter
+    /**
+     * RLS Policies - Standard Tenant Isolation
+     * Pattern: tenant_id::text = current_setting('app.current_tenant_id', true)
+     * Ensures users can only access executions from their own tenant
+     */
     pgPolicy('prompt_executions_select', {
       for: 'select',
       to: authenticatedRole,

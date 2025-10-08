@@ -7,15 +7,13 @@ import {
   jsonb,
   timestamp,
   pgPolicy,
-  pgRole,
   index,
   foreignKey,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { tenants } from './tenants';
-
-// Database roles
-const authenticatedRole = pgRole('authenticated');
+import { authenticatedRole } from './constants';
+import type { JsonValue } from './types';
 
 /**
  * Prompts
@@ -40,7 +38,11 @@ export const prompts = pgTable(
     index('prompts_tenant_id_idx').on(table.tenantId),
     index('prompts_is_public_idx').on(table.isPublic),
 
-    // RLS Policies - tenant_id filter + public prompts readable by all
+    /**
+     * RLS Policies - Tenant Isolation with Public Sharing
+     * Pattern: tenant_id::text = current_setting('app.current_tenant_id', true) OR is_public = true
+     * Allows users to see their own prompts plus any public prompts from other tenants
+     */
     pgPolicy('prompts_select', {
       for: 'select',
       to: authenticatedRole,
@@ -81,7 +83,7 @@ export const promptVersions = pgTable(
     content: text('content').notNull(),
     metadataJsonb: jsonb('metadata_jsonb').$type<{
       optimizationType?: string;
-      modelSpecificVariants?: Record<string, string>;
+      modelSpecificVariants?: JsonValue;
       performanceNotes?: string;
     }>(),
     parentVersionId: uuid('parent_version_id'), // Self-reference for branching
@@ -92,6 +94,11 @@ export const promptVersions = pgTable(
     index('prompt_versions_prompt_id_idx').on(table.promptId),
     index('prompt_versions_version_number_idx').on(table.versionNumber),
     index('prompt_versions_parent_version_id_idx').on(table.parentVersionId),
+    // Composite index for common lookup pattern: "Get version N of prompt X"
+    index('prompt_versions_prompt_version_idx').on(
+      table.promptId,
+      table.versionNumber,
+    ),
 
     // Self-reference for branching
     foreignKey({
@@ -100,7 +107,12 @@ export const promptVersions = pgTable(
       name: 'prompt_versions_parent_version_id_fkey',
     }),
 
-    // RLS Policies - Through parent prompt's tenant_id
+    /**
+     * RLS Policies - Nested Through Parent Prompt
+     * Pattern: EXISTS subquery checking parent prompt's tenant_id
+     * Inherits tenant isolation from parent prompts table
+     * Note: SELECT allows public prompts, but INSERT/UPDATE/DELETE require tenant ownership
+     */
     pgPolicy('prompt_versions_select', {
       for: 'select',
       to: authenticatedRole,
