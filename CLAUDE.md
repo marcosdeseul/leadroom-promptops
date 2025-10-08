@@ -112,7 +112,7 @@ const leads = await db.select().from(leadsTable);
   2. `npm run db:generate` - Generate SQL migration
   3. `npm run db:copy` - Copy to `supabase/migrations/` via `scripts/copy-migrations.ts`
   4. `supabase db reset --local` - Apply to local database
-  5. Verify in Supabase Studio (http://127.0.0.1:54323)
+  5. Verify in Supabase Studio (http://127.0.0.1:55323)
 
 ## Development Roadmap
 
