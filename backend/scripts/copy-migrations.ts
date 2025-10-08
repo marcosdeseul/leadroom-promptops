@@ -29,8 +29,9 @@ function getTimestamp(): string {
   const hours = String(now.getHours()).padStart(2, '0');
   const minutes = String(now.getMinutes()).padStart(2, '0');
   const seconds = String(now.getSeconds()).padStart(2, '0');
-  
-  return `${year}${month}${day}${hours}${minutes}${seconds}`;
+  const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+
+  return `${year}${month}${day}${hours}${minutes}${seconds}${milliseconds}`;
 }
 
 function copyMigrations(): void {
@@ -58,16 +59,16 @@ function copyMigrations(): void {
     return;
   }
 
-  const timestamp = getTimestamp();
   let counter = 0;
 
   for (const file of files) {
+    const timestamp = getTimestamp(); // Generate unique timestamp per file
     const sourcePath = path.join(DRIZZLE_DIR, file);
     const content = fs.readFileSync(sourcePath, 'utf-8');
 
     // Generate new filename with timestamp
-    // Format: YYYYMMDDHHMMSS_original_name.sql
-    const newFilename = `${timestamp}_${String(counter).padStart(2, '0')}_${file}`;
+    // Format: YYYYMMDDHHMMSSmmm_counter_original_name.sql
+    const newFilename = `${timestamp}_${String(counter).padStart(4, '0')}_${file}`;
     const destPath = path.join(SUPABASE_MIGRATIONS_DIR, newFilename);
 
     // Copy file
