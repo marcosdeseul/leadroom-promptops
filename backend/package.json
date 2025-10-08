@@ -81,7 +81,8 @@
       "!**/*.module.ts",
       "!**/main.ts",
       "!**/migrations/**",
-      "!**/db.config.ts"
+      "!**/db.config.ts",
+      "!**/schema/**"
     ],
     "coverageDirectory": "../coverage",
     "coverageProvider": "v8",
