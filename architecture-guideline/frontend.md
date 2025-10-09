@@ -6,9 +6,14 @@ Perfect—let’s lock a clean, Claude-friendly frontend stack you can scale wit
 
 # UI system (lowest code, highest leverage)
 
-- Chakra UI (primary UI layer) — fastest way to ship a consistent SaaS UI with a small API surface. It plays well with App Router and ships semantic tokens so you can re-skin by intent (“surface”, “text.muted”) without refactoring components. Use `@chakra-ui/next-js` for App Router glue. ([chakra-ui.com][2])
-- LLM/MCP enablement: Install Chakra’s MCP server and drop `llms.txt` for Chakra into the repo so Claude stops reinventing components and follows house patterns. These two drastically improve code consistency when AI authors UI. ([Next.js][3])
-- Optional “headless escape hatch”: If you ever need ultra-custom widgets, pair Chakra with Radix Primitives (accessible, unstyled) or pull specific shadcn/ui components (Radix-based) instead of inventing from scratch. ([Next-Intl][4])
+- **Chakra UI v3** (primary UI layer) — fastest way to ship a consistent SaaS UI with a small API surface. V3 uses a new theming system with `createSystem` and `defineConfig` for semantic tokens. Install with `@chakra-ui/react` and `@emotion/react` only. ([chakra-ui.com][2])
+- **IMPORTANT**: V3 API changes:
+  - Theme: Use `createSystem(defaultConfig, defineConfig({...}))` instead of `extendTheme`
+  - Provider: Use snippet-generated `<Provider>` component, not `ChakraProvider`
+  - Components: Use Chakra CLI snippets (`npx @chakra-ui/cli snippet add`) for v3-compatible components
+  - No `@chakra-ui/next-js` package needed in v3
+- LLM/MCP enablement: Install Chakra's MCP server for v3 component patterns. ([Next.js][3])
+- Optional "headless escape hatch": If you ever need ultra-custom widgets, pair Chakra with Radix Primitives (accessible, unstyled) or pull specific shadcn/ui components (Radix-based) instead of inventing from scratch. ([Next-Intl][4])
 
 # Forms & validation (tight, type-safe)
 

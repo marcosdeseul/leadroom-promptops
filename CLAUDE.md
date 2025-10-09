@@ -94,6 +94,57 @@ User → Next.js 15 (Chakra UI) → NestJS+Fastify → Supabase (local)
 
 ## Critical Patterns
 
+### Chakra UI v3 API (Frontend)
+
+**BREAKING CHANGES from v2**: Use v3 API exclusively.
+
+**Theme System**:
+```typescript
+// styles/theme.ts
+import { createSystem, defaultConfig, defineConfig } from '@chakra-ui/react';
+
+export const system = createSystem(defaultConfig, defineConfig({
+  theme: {
+    semanticTokens: {
+      colors: {
+        'brand.primary': { value: { base: '{colors.blue.500}', _dark: '{colors.blue.300}' } },
+      }
+    }
+  }
+}));
+```
+
+**Provider Setup**:
+```typescript
+// app/providers.tsx - Use snippet-generated Provider
+'use client';
+import { Provider } from '@/components/ui/provider'; // From snippet
+import { QueryClientProvider } from '@tanstack/react-query';
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Provider>{children}</Provider>
+    </QueryClientProvider>
+  );
+}
+```
+
+**Component Usage**:
+```bash
+# Generate v3-compatible components via CLI
+npx @chakra-ui/cli snippet add button
+npx @chakra-ui/cli snippet add input
+# Components go to components/ui/
+```
+
+**Key Changes**:
+- ❌ NO `extendTheme`, use `createSystem` + `defineConfig`
+- ❌ NO `ChakraProvider`, use snippet `<Provider>`
+- ❌ NO `ColorModeScript` in v3
+- ❌ NO `@chakra-ui/next-js` package
+- ✅ Use CLI snippets for components: `npx @chakra-ui/cli snippet add [component]`
+
 ### Always Include Tenant Context
 ```typescript
 // Tenant context set via middleware
