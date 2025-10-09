@@ -1,0 +1,226 @@
+import { Meta } from '@storybook/blocks';
+
+<Meta title="Documentation/Theming" />
+
+# Theming Guide
+
+Our application uses Chakra UI v3 with a custom theme system that supports light and dark modes.
+
+## Semantic Tokens
+
+Semantic tokens provide consistent design across light and dark modes. Always use semantic tokens instead of hardcoded colors.
+
+### Color Tokens
+
+#### Brand Colors
+```tsx
+// Primary brand color - used for main actions and branding
+<Button colorPalette="blue">Primary Action</Button>
+
+// Access in style props
+<Box bg="brand.primary">...</Box>
+<Text color="brand.secondary">...</Text>
+```
+
+#### Surface Colors
+```tsx
+// Base surface - main background
+<Box bg="surface.base">Main content area</Box>
+
+// Elevated surface - cards, modals, dropdowns
+<Card bg="surface.elevated">Card content</Card>
+```
+
+#### Text Colors
+```tsx
+// Primary text - main content
+<Text color="text.primary">Main heading</Text>
+
+// Muted text - secondary content, captions
+<Text color="text.muted">Helper text</Text>
+```
+
+#### Border Colors
+```tsx
+// Default borders
+<Box borderColor="border.default">...</Box>
+```
+
+#### Feedback Colors
+```tsx
+// Positive feedback - success states
+<Alert status="success" color="feedback.positive">Success!</Alert>
+
+// Negative feedback - error states
+<Alert status="error" color="feedback.negative">Error!</Alert>
+```
+
+## Theme Configuration
+
+The theme is defined in `styles/theme.ts`:
+
+```typescript
+export const system = createSystem(defaultConfig, defineConfig({
+  theme: {
+    semanticTokens: {
+      colors: {
+        'brand.primary': {
+          value: { base: '{colors.blue.500}', _dark: '{colors.blue.300}' },
+        },
+        'surface.elevated': {
+          value: { base: 'white', _dark: '{colors.gray.800}' },
+        },
+        // ... other tokens
+      },
+    },
+    tokens: {
+      fonts: {
+        heading: { value: 'Inter, sans-serif' },
+        body: { value: 'Inter, sans-serif' },
+      },
+    },
+  },
+}));
+```
+
+## Dark Mode
+
+Dark mode is automatically supported through semantic tokens and the ColorModeProvider.
+
+### Using Dark Mode in Components
+
+```tsx
+import { useColorMode } from '@/components/ui/color-mode';
+
+function MyComponent() {
+  const { colorMode, toggleColorMode } = useColorMode();
+
+  return (
+    <Box>
+      <p>Current mode: {colorMode}</p>
+      <Button onClick={toggleColorMode}>Toggle Mode</Button>
+    </Box>
+  );
+}
+```
+
+### Color Mode Button
+
+A pre-built dark mode toggle is available:
+
+```tsx
+import { ColorModeButton } from '@/components/ui/color-mode';
+
+function Header() {
+  return (
+    <header>
+      <ColorModeButton />
+    </header>
+  );
+}
+```
+
+### Testing Dark Mode in Storybook
+
+Storybook includes a dark mode toggle in the toolbar. Click the moon/sun icon to switch between modes and test your components.
+
+## Typography
+
+### Font Families
+
+```tsx
+// Headings
+<Heading fontFamily="heading">Page Title</Heading>
+
+// Body text
+<Text fontFamily="body">Paragraph content</Text>
+```
+
+### Font Sizes
+
+Use the predefined size variants:
+
+```tsx
+<Heading size="2xl">Extra Large</Heading>
+<Heading size="xl">Extra Large</Heading>
+<Heading size="lg">Large</Heading>
+<Heading size="md">Medium</Heading>
+<Heading size="sm">Small</Heading>
+<Heading size="xs">Extra Small</Heading>
+```
+
+## Best Practices
+
+### DO: Use Semantic Tokens
+```tsx
+// ✅ Good - uses semantic token
+<Box bg="surface.elevated" color="text.primary">
+  Content
+</Box>
+```
+
+### DON'T: Use Hardcoded Colors
+```tsx
+// ❌ Bad - hardcoded color breaks dark mode
+<Box bg="white" color="#333">
+  Content
+</Box>
+```
+
+### DO: Use Color Palettes
+```tsx
+// ✅ Good - uses Chakra color palette
+<Button colorPalette="blue">Action</Button>
+<Alert status="success">Success message</Alert>
+```
+
+### DO: Test in Both Modes
+Always test components in both light and dark mode to ensure proper contrast and readability.
+
+## Customizing the Theme
+
+To customize the theme, modify `styles/theme.ts`:
+
+### Adding New Semantic Tokens
+```typescript
+semanticTokens: {
+  colors: {
+    'custom.accent': {
+      value: { base: '{colors.purple.500}', _dark: '{colors.purple.300}' },
+    },
+  },
+}
+```
+
+### Adding New Font Families
+```typescript
+tokens: {
+  fonts: {
+    mono: { value: 'Fira Code, monospace' },
+  },
+}
+```
+
+## Component-Specific Theming
+
+Components can be themed using the `colorPalette` prop:
+
+```tsx
+// Button with different color palettes
+<Button colorPalette="blue">Primary</Button>
+<Button colorPalette="red">Danger</Button>
+<Button colorPalette="green">Success</Button>
+
+// Alert with status colors
+<Alert status="info">Information</Alert>
+<Alert status="warning">Warning</Alert>
+<Alert status="error">Error</Alert>
+<Alert status="success">Success</Alert>
+```
+
+## Resources
+
+- [Chakra UI v3 Theming](https://www.chakra-ui.com/docs/theming/overview)
+- [Semantic Tokens](https://www.chakra-ui.com/docs/theming/semantic-tokens)
+- [Color Mode](https://www.chakra-ui.com/docs/components/color-mode)
+- [Design Tokens](https://www.chakra-ui.com/docs/theming/design-tokens)

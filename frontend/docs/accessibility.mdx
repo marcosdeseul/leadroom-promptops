@@ -1,0 +1,151 @@
+import { Meta } from '@storybook/blocks';
+
+<Meta title="Documentation/Accessibility" />
+
+# Accessibility Guidelines
+
+Accessibility is a core principle of our component library. All components are built with WCAG 2.1 AA compliance in mind.
+
+## Core Principles
+
+### 1. Semantic HTML
+Always use semantic HTML elements that convey meaning:
+- Use `<button>` for clickable elements
+- Use `<nav>` for navigation menus
+- Use `<main>`, `<header>`, `<footer>` for page structure
+- Use `<form>` and proper form elements
+
+### 2. ARIA Attributes
+Use ARIA attributes when semantic HTML is not enough:
+- `aria-label` for elements without visible text
+- `aria-labelledby` to reference labels
+- `aria-describedby` for additional descriptions
+- `aria-invalid` for form validation states
+- `aria-required` for required fields
+
+### 3. Keyboard Navigation
+All interactive elements must be keyboard accessible:
+- Tab order should be logical
+- Focus states must be visible
+- Enter/Space should activate buttons
+- Escape should close modals/dialogs
+- Arrow keys for navigation in lists/menus
+
+### 4. Color Contrast
+Maintain proper color contrast ratios:
+- Normal text: Minimum 4.5:1 contrast ratio
+- Large text (18pt+): Minimum 3:1 contrast ratio
+- Interactive elements: Minimum 3:1 contrast ratio
+
+## Component Accessibility
+
+### Button
+```tsx
+// Good: Semantic button with clear purpose
+<Button aria-label="Close dialog">
+  <CloseIcon />
+</Button>
+
+// Bad: Missing label for icon-only button
+<Button>
+  <CloseIcon />
+</Button>
+```
+
+### Form Fields
+```tsx
+// Good: Proper label association and error handling
+<Field
+  label="Email Address"
+  errorText="Please enter a valid email"
+  invalid={hasError}
+  required
+>
+  <Input type="email" aria-required="true" />
+</Field>
+
+// Bad: No label or error state
+<Input type="email" />
+```
+
+### Alerts
+```tsx
+// Good: Proper role and live region
+<Alert status="error" role="alert" aria-live="assertive">
+  An error occurred
+</Alert>
+
+// Bad: No semantic meaning
+<div>An error occurred</div>
+```
+
+### Empty States
+```tsx
+// Good: Proper semantic structure and status
+<EmptyState
+  title="No results found"
+  description="Try adjusting your filters"
+  role="status"
+  aria-live="polite"
+/>
+```
+
+## Testing for Accessibility
+
+### Manual Testing
+1. **Keyboard Navigation**: Navigate using only keyboard (Tab, Shift+Tab, Enter, Space, Arrow keys)
+2. **Screen Reader**: Test with VoiceOver (Mac), NVDA (Windows), or JAWS
+3. **Color Contrast**: Use browser dev tools or online contrast checkers
+4. **Focus Management**: Ensure focus is visible and logical
+
+### Automated Testing
+Storybook includes the a11y addon for automated accessibility testing:
+- Check the "Accessibility" tab in Storybook
+- Review violations, passes, and incomplete tests
+- Fix violations before deploying
+
+### Common Issues to Check
+- [ ] All images have alt text
+- [ ] Form inputs have associated labels
+- [ ] Focus states are visible
+- [ ] Color is not the only means of conveying information
+- [ ] Text has sufficient contrast
+- [ ] Interactive elements are keyboard accessible
+- [ ] ARIA attributes are used correctly
+
+## Best Practices
+
+### Focus Management
+```tsx
+// Store and restore focus when opening/closing modals
+const triggerRef = useRef<HTMLButtonElement>(null);
+
+const handleClose = () => {
+  setIsOpen(false);
+  triggerRef.current?.focus(); // Return focus to trigger
+};
+```
+
+### Skip Links
+```tsx
+// Provide skip navigation for keyboard users
+<a href="#main-content" className="skip-link">
+  Skip to main content
+</a>
+```
+
+### Dynamic Content
+```tsx
+// Announce dynamic changes to screen readers
+<div role="status" aria-live="polite" aria-atomic="true">
+  {statusMessage}
+</div>
+```
+
+## Resources
+
+- [WCAG 2.1 Guidelines](https://www.w3.org/WAI/WCAG21/quickref/)
+- [WAI-ARIA Authoring Practices](https://www.w3.org/WAI/ARIA/apg/)
+- [Chakra UI Accessibility](https://chakra-ui.com/docs/theming/semantic-tokens)
+- [WebAIM Resources](https://webaim.org/resources/)
+- [A11y Project Checklist](https://www.a11yproject.com/checklist/)

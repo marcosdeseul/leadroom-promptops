@@ -69,9 +69,10 @@ npm run db:push          # Push to local Supabase
 
 # Frontend
 cd frontend
-npm run dev              # Development server
+npm run dev              # Development server (port 5300)
 npm run build            # Production build
 npm run typecheck        # Type checking
+npm run storybook        # Storybook (port 6006)
 ```
 
 ## Architecture (MVP - Local Dev)
