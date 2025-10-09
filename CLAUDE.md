@@ -83,16 +83,26 @@ User → Next.js 15 (Chakra UI) → NestJS+Fastify → Supabase (local)
 ```
 
 **Stack**:
-- Frontend: Next.js 15 + Chakra UI v3 + TanStack Query + Zustand
+- Frontend: Next.js 15 + **Chakra UI v3** (NOT v2) + TanStack Query + Zustand
 - Backend: NestJS + Fastify adapter + @rekog/mcp-nest
 - Database: Supabase (PostgreSQL + RLS + Vault + Realtime)
-- Local Dev: Custom ports (see architecture-guideline/backend.md)
+- Local Dev: Custom ports (Frontend: 5300, Backend: 5301)
 
 **Future (v2+)**:
 - Zuplo: API gateway, rate limiting, API key management
 - Cloud Run: Stateless compute
 
 ## Critical Patterns
+
+### Chakra UI v3 (Frontend)
+
+**CRITICAL**: Use Chakra UI v3 API exclusively, NOT v2.
+
+**Key Breaking Changes**:
+- Use `createSystem` + `defineConfig` (NOT `extendTheme`)
+- Use snippet-generated `<Provider>` (NOT `ChakraProvider`)
+- Generate components via CLI: `npx @chakra-ui/cli snippet add [component]`
+- See `architecture-guideline/frontend.md` for detailed patterns and code examples
 
 ### Always Include Tenant Context
 ```typescript

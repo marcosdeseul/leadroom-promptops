@@ -14,8 +14,8 @@ async function bootstrap() {
   // Enable CORS
   app.enableCors();
 
-  // Use port 3001 for backend (port 3000 reserved for frontend)
-  const port = process.env.PORT ?? 3001;
+  // Use port 5301 for backend (port 5300 reserved for frontend)
+  const port = process.env.PORT ?? 5301;
   await app.listen(port, '0.0.0.0');
 
   console.log(`🚀 Application is running on: http://localhost:${port}`);
