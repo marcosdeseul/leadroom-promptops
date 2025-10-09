@@ -72,7 +72,7 @@ cd frontend
 npm run dev              # Development server (port 5300)
 npm run build            # Production build
 npm run typecheck        # Type checking
-npm run storybook        # Storybook (port 6006)
+npm run storybook        # Storybook (port 5400)
 ```
 
 ## Architecture (MVP - Local Dev)

@@ -9,7 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
-    "storybook": "storybook dev -p 6006",
+    "storybook": "storybook dev -p 5400",
     "build-storybook": "storybook build"
   },
   "dependencies": {

@@ -14,7 +14,7 @@ npm run storybook
 npm run build-storybook
 ```
 
-Storybook will be available at [http://localhost:6006](http://localhost:6006)
+Storybook will be available at [http://localhost:5400](http://localhost:5400)
 
 ## Project Structure
 
