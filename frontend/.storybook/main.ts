@@ -6,19 +6,15 @@ const config: StorybookConfig = {
     '../app/**/*.stories.@(ts|tsx)',
     '../docs/**/*.mdx',
   ],
-  addons: [
-    '@storybook/addon-essentials',
-    '@storybook/addon-interactions',
-    '@storybook/addon-a11y',
-  ],
+
+  addons: ['@storybook/addon-a11y', '@storybook/addon-docs'],
+
   framework: {
     name: '@storybook/nextjs',
     options: {},
   },
-  staticDirs: ['../public'],
-  docs: {
-    autodocs: 'tag',
-  },
+
+  staticDirs: ['../public']
 };
 
 export default config;

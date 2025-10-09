@@ -1,4 +1,4 @@
-import type { Preview } from '@storybook/react';
+import type { Preview } from '@storybook/nextjs';
 import React from 'react';
 import { Provider } from '../components/ui/provider';
 import { ColorModeProvider } from '../components/ui/color-mode';
@@ -12,7 +12,7 @@ const preview: Preview = {
       },
     },
     a11y: {
-      element: 'body',
+      context: 'body',
       config: {
         rules: [
           {
