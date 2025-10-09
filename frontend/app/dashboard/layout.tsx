@@ -43,7 +43,7 @@ export default function DashboardLayout({
                     py={2}
                     borderRadius="md"
                     bg={isActive ? 'brand.primary' : 'transparent'}
-                    color={isActive ? 'white' : 'text.primary'}
+                    color={isActive ? 'surface.elevated' : 'text.primary'}
                     _hover={{
                       bg: isActive ? 'brand.primary' : 'surface.base',
                     }}

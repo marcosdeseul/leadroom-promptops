@@ -1,12 +1,9 @@
 import { apiClient } from './client';
 import type { LoginInput, SignupInput } from '../validators/auth';
+import type { User } from '../types/user';
 
 interface AuthResponse {
-  user: {
-    id: string;
-    email: string;
-    name: string;
-  };
+  user: User;
   token: string;
 }
 
