@@ -46,7 +46,7 @@ frontend/
 Create a new `.stories.tsx` file next to your component:
 
 ```tsx
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { YourComponent } from './YourComponent';
 
 const meta = {
@@ -187,7 +187,7 @@ See `docs/theming.mdx` for complete theming documentation.
 Test user interactions using the interactions addon:
 
 ```tsx
-import { fn } from '@storybook/test';
+import { fn } from 'storybook/test';
 
 export const WithInteraction: Story = {
   args: {
@@ -232,7 +232,7 @@ Use the hierarchical naming structure to group related components.
 Create MDX files in the `docs/` directory:
 
 ```mdx
-import { Meta } from '@storybook/blocks';
+import { Meta } from '@storybook/addon-docs/blocks';
 
 <Meta title="Documentation/PageTitle" />
 
